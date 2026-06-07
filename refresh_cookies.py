@@ -32,20 +32,23 @@ ACCOUNTS = [
 
 async def login(page: Page, username: str, password: str, totp_secret: str | None) -> None:
     await page.goto("https://x.com/i/flow/login", wait_until="domcontentloaded", timeout=60_000)
+    await page.wait_for_timeout(3_000)
+
+    # ユーザー名
+    await page.fill('input[autocomplete="username"]', username)
+    await page.keyboard.press("Enter")
     await page.wait_for_timeout(2_000)
 
-    await page.get_by_label("Phone, email, or username").fill(username)
-    await page.get_by_role("button", name="Next").click()
-    await page.wait_for_timeout(2_000)
-
-    confirm = page.get_by_label("Enter your phone number or username")
-    if await confirm.count() > 0:
-        await confirm.fill(username)
-        await page.get_by_role("button", name="Next").click()
+    # 電話/メール確認が出る場合
+    verify = page.locator('[data-testid="ocfEnterTextTextInput"]')
+    if await verify.count() > 0:
+        await verify.fill(username)
+        await page.keyboard.press("Enter")
         await page.wait_for_timeout(2_000)
 
-    await page.get_by_label("Password", exact=True).fill(password)
-    await page.get_by_role("button", name="Log in").click()
+    # パスワード
+    await page.fill('input[name="password"]', password)
+    await page.keyboard.press("Enter")
     await page.wait_for_timeout(3_000)
 
     otp_input = None
@@ -69,7 +72,7 @@ async def login(page: Page, username: str, password: str, totp_secret: str | Non
             raise RuntimeError("pyotp が未インストールです: pip install pyotp")
         code = pyotp.TOTP(totp_secret).now()
         await otp_input.fill(code)
-        await page.get_by_role("button", name="Next").click()
+        await page.keyboard.press("Enter")
         await page.wait_for_timeout(2_000)
 
     if "flow/login" in page.url or page.url.endswith("/login"):
