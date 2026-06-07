@@ -27,6 +27,13 @@ jobs:
           X_TOTP_KNZW:     ${{ secrets.X_TOTP_KNZW }}
         run: python refresh_cookies.py
 
+      - name: デバッグ画像をアップロード
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: debug_*.png
+
       - name: 実行 (knzw)
         env:
           CONFIG_PATH: config/knzw.yml
