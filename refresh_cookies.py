@@ -33,8 +33,6 @@ ACCOUNTS = [
 async def login(page: Page, username: str, password: str, totp_secret: str | None) -> None:
     await page.goto("https://x.com/i/flow/login", wait_until="domcontentloaded", timeout=60_000)
     await page.wait_for_timeout(5_000)
-    await page.screenshot(path=f"debug_login_{name}.png")
-    print(f"[{name}] ログインページURL: {page.url}")
 
     # ユーザー名
     await page.fill('input[autocomplete="username"]', username)
