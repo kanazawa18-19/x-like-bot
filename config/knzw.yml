@@ -1,0 +1,14 @@
+account: knzw
+max_likes_per_run: 20
+delay_min: 3
+delay_max: 8
+
+# いいね対象キーワード・ハッシュタグ（スペースで複合検索も可）
+keywords:
+  - "AI 開発"
+  - "営業 AI"
+  - "営業 効率化"
+  - "売上効率"
+  - "WEBマーケ 効率化"
+
+target_users: []

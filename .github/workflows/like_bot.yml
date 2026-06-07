@@ -1,0 +1,40 @@
+name: X いいね巡回Bot
+
+on:
+  workflow_dispatch:  # cron-job.org から GitHub API 経由でトリガー
+
+jobs:
+  like:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: ライブラリのインストール
+        run: pip install -r requirements.txt
+
+      - name: Playwright Chromium のインストール
+        run: python -m playwright install chromium --with-deps
+
+      - name: cookies ファイルを作成
+        env:
+          X_COOKIES_KNZW: ${{ secrets.X_COOKIES_KNZW }}
+        run: |
+          python3 -c "
+          import base64, os
+          for secret, fname in [
+              ('X_COOKIES_KNZW', 'cookies_knzw.json'),
+          ]:
+              val = ''.join(os.environ[secret].split())
+              open(fname, 'wb').write(base64.b64decode(val))
+          print('cookies ファイル作成完了')
+          "
+
+      - name: 実行 (knzw)
+        env:
+          CONFIG_PATH: config/knzw.yml
+        run: python like_bot.py
