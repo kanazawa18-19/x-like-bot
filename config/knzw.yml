@@ -1,7 +1,7 @@
 account: knzw
 max_likes_per_run: 100
-delay_min: 30
-delay_max: 36
+delay_min: 65
+delay_max: 75
 
 # いいね対象キーワード・ハッシュタグ（スペースで複合検索も可）
 keywords:
