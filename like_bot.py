@@ -2,13 +2,16 @@
 """X.com いいね巡回ボット（Playwright + セッションクッキー）"""
 
 import asyncio
+import base64
 import os
 import random
 import sys
 from pathlib import Path
 from urllib.parse import quote
 
+import httpx
 import yaml
+from nacl import encoding, public as nacl_public
 from playwright.async_api import async_playwright, BrowserContext, Page
 
 
@@ -154,8 +157,37 @@ async def run_account(cookies_path: Path, config: dict, account: str) -> int:
             # ソース間も人間らしい間隔
             await asyncio.sleep(random.uniform(15, 40))
 
+        # セッション終了前にクッキーを保存
+        await context.storage_state(path=str(cookies_path))
         await browser.close()
     return total
+
+
+async def update_github_secret(cookies_path: Path, secret_name: str) -> None:
+    token = os.environ.get("GH_TOKEN")
+    repo  = os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repo:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+            r = await client.get(
+                f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+                headers=headers, timeout=15
+            )
+            r.raise_for_status()
+            kd = r.json()
+            pub = nacl_public.PublicKey(kd["key"].encode(), encoding.Base64Encoder)
+            encrypted = base64.b64encode(nacl_public.SealedBox(pub).encrypt(cookies_path.read_bytes())).decode()
+            await client.put(
+                f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}",
+                headers=headers,
+                json={"encrypted_value": encrypted, "key_id": kd["key_id"]},
+                timeout=15
+            )
+        print(f"GitHub Secret {secret_name} を自動更新しました")
+    except Exception as e:
+        print(f"Secret 自動更新失敗（続行）: {e}", file=sys.stderr)
 
 
 async def main() -> None:
@@ -170,6 +202,7 @@ async def main() -> None:
 
     total = await run_account(cookies_path, config, account)
     print(f"[{account}] 完了: 合計 {total} 件いいね")
+    await update_github_secret(cookies_path, f"X_COOKIES_{account.upper()}")
 
 
 if __name__ == "__main__":

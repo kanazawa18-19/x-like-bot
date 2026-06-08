@@ -34,4 +34,6 @@ jobs:
       - name: 実行 (knzw)
         env:
           CONFIG_PATH: config/knzw.yml
+          GH_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python like_bot.py
