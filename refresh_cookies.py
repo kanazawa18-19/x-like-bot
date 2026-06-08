@@ -35,7 +35,8 @@ async def login(page: Page, username: str, password: str, totp_secret: str | Non
     await page.wait_for_timeout(5_000)
 
     # ユーザー名
-    await page.fill('input[autocomplete="username"]', username)
+    await page.wait_for_selector('input[name="username_or_email"]', timeout=30_000)
+    await page.fill('input[name="username_or_email"]', username)
     await page.keyboard.press("Enter")
     await page.wait_for_timeout(2_000)
 
