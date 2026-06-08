@@ -20,12 +20,16 @@ jobs:
       - name: Playwright Chromium のインストール
         run: python -m playwright install chromium --with-deps
 
-      - name: Cookie 更新（自動ログイン）
+      - name: cookies ファイルを作成
         env:
-          X_USERNAME_KNZW: ${{ secrets.X_USERNAME_KNZW }}
-          X_PASSWORD_KNZW: ${{ secrets.X_PASSWORD_KNZW }}
-          X_TOTP_KNZW:     ${{ secrets.X_TOTP_KNZW }}
-        run: python refresh_cookies.py
+          X_COOKIES_KNZW: ${{ secrets.X_COOKIES_KNZW }}
+        run: |
+          python3 -c "
+          import base64, os
+          val = ''.join(os.environ['X_COOKIES_KNZW'].split())
+          open('cookies_knzw.json', 'wb').write(base64.b64decode(val))
+          print('cookies ファイル作成完了')
+          "
 
       - name: 実行 (knzw)
         env:
