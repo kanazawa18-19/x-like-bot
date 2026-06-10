@@ -178,7 +178,7 @@ async def update_github_secret(cookies_path: Path, secret_name: str) -> None:
             r.raise_for_status()
             kd = r.json()
             pub = nacl_public.PublicKey(kd["key"].encode(), encoding.Base64Encoder)
-            encrypted = base64.b64encode(nacl_public.SealedBox(pub).encrypt(cookies_path.read_bytes())).decode()
+            encrypted = base64.b64encode(nacl_public.SealedBox(pub).encrypt(cookies_path.read_text(encoding="utf-8").encode("utf-8"))).decode()
             await client.put(
                 f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}",
                 headers=headers,
