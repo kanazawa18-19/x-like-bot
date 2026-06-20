@@ -31,6 +31,18 @@ jobs:
           print('cookies ファイル作成完了')
           "
 
+      - name: liked_ids ファイルを作成
+        env:
+          X_LIKED_IDS_KNZW: ${{ secrets.X_LIKED_IDS_KNZW }}
+        run: |
+          python3 -c "
+          import os, json
+          raw = os.environ.get('X_LIKED_IDS_KNZW', '').strip()
+          with open('liked_ids_knzw.json', 'w', encoding='utf-8') as f:
+              f.write(raw if raw else '[]')
+          print('liked_ids ファイル作成完了')
+          "
+
       - name: 実行 (knzw)
         env:
           CONFIG_PATH: config/knzw.yml

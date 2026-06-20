@@ -3,6 +3,7 @@
 
 import asyncio
 import base64
+import json
 import os
 import random
 import sys
@@ -18,6 +19,35 @@ from playwright.async_api import async_playwright, BrowserContext, Page
 def load_config(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+def load_liked_ids(path: Path) -> set[str]:
+    if path.exists():
+        with open(path) as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_liked_ids(path: Path, liked_ids: set[str], max_ids: int = 2000) -> None:
+    # Snowflake IDは大きいほど新しいので、降順ソートでmax_ids件だけ残す
+    trimmed = sorted(liked_ids, reverse=True)[:max_ids]
+    with open(path, "w") as f:
+        json.dump(trimmed, f)
+
+
+async def get_tweet_id(btn) -> str | None:
+    try:
+        href = await btn.evaluate("""el => {
+            const article = el.closest('article');
+            if (!article) return null;
+            const link = article.querySelector('a[href*="/status/"]');
+            return link ? link.getAttribute('href') : null;
+        }""")
+        if href and "/status/" in href:
+            return href.split("/status/")[-1].split("/")[0]
+    except Exception:
+        pass
+    return None
 
 
 async def human_delay(base_range: tuple) -> None:
@@ -48,7 +78,13 @@ async def human_scroll(page: Page) -> None:
         await page.wait_for_timeout(random.randint(800, 2_000))
 
 
-async def like_visible_posts(page: Page, max_likes: int, delay_range: tuple, label: str) -> int:
+async def like_visible_posts(
+    page: Page,
+    max_likes: int,
+    delay_range: tuple,
+    label: str,
+    liked_ids: set[str],
+) -> int:
     liked = 0
     processed: set[str] = set()
     no_new_streak = 0
@@ -81,6 +117,12 @@ async def like_visible_posts(page: Page, max_likes: int, delay_range: tuple, lab
             if liked >= max_likes:
                 break
 
+            tweet_id = await get_tweet_id(btn)
+
+            # すでにいいね済みのツイートはスキップ
+            if tweet_id and tweet_id in liked_ids:
+                continue
+
             # ランダムにスルー
             if random.random() < skip_rate:
                 continue
@@ -97,6 +139,8 @@ async def like_visible_posts(page: Page, max_likes: int, delay_range: tuple, lab
                     await page.wait_for_timeout(random.randint(200, 900))
                 await btn.click()
                 liked += 1
+                if tweet_id:
+                    liked_ids.add(tweet_id)
                 await human_delay(delay_range)
             except Exception:
                 pass
@@ -107,21 +151,27 @@ async def like_visible_posts(page: Page, max_likes: int, delay_range: tuple, lab
     return liked
 
 
-async def like_from_search(page: Page, keyword: str, max_likes: int, delay_range: tuple) -> int:
+async def like_from_search(
+    page: Page, keyword: str, max_likes: int, delay_range: tuple, liked_ids: set[str]
+) -> int:
     url = f"https://x.com/search?q={quote(keyword)}&f=live"
     await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
     await page.wait_for_timeout(random.randint(3_000, 6_000))
-    return await like_visible_posts(page, max_likes, delay_range, f"検索: {keyword}")
+    return await like_visible_posts(page, max_likes, delay_range, f"検索: {keyword}", liked_ids)
 
 
-async def like_from_user_timeline(page: Page, username: str, max_likes: int, delay_range: tuple) -> int:
+async def like_from_user_timeline(
+    page: Page, username: str, max_likes: int, delay_range: tuple, liked_ids: set[str]
+) -> int:
     url = f"https://x.com/{username}"
     await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
     await page.wait_for_timeout(random.randint(3_000, 6_000))
-    return await like_visible_posts(page, max_likes, delay_range, f"TL: @{username}")
+    return await like_visible_posts(page, max_likes, delay_range, f"TL: @{username}", liked_ids)
 
 
-async def run_account(cookies_path: Path, config: dict, account: str) -> int:
+async def run_account(
+    cookies_path: Path, liked_ids_path: Path, config: dict, account: str
+) -> int:
     max_likes    = config.get("max_likes_per_run", 20)
     keywords     = config.get("keywords", [])
     target_users = config.get("target_users", [])
@@ -129,6 +179,9 @@ async def run_account(cookies_path: Path, config: dict, account: str) -> int:
 
     sources = [("keyword", k) for k in keywords] + [("user", u) for u in target_users]
     likes_per_source = max(1, max_likes // len(sources)) if sources else 0
+
+    liked_ids = load_liked_ids(liked_ids_path)
+    print(f"[{account}] いいね済みID数: {len(liked_ids)}")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -149,9 +202,9 @@ async def run_account(cookies_path: Path, config: dict, account: str) -> int:
         for source_type, source in sources:
             try:
                 if source_type == "keyword":
-                    total += await like_from_search(page, source, likes_per_source, delay_range)
+                    total += await like_from_search(page, source, likes_per_source, delay_range, liked_ids)
                 else:
-                    total += await like_from_user_timeline(page, source, likes_per_source, delay_range)
+                    total += await like_from_user_timeline(page, source, likes_per_source, delay_range, liked_ids)
             except Exception as e:
                 print(f"  ERROR [{source}]: {e}", file=sys.stderr)
             # ソース間も人間らしい間隔
@@ -160,10 +213,13 @@ async def run_account(cookies_path: Path, config: dict, account: str) -> int:
         # セッション終了前にクッキーを保存
         await context.storage_state(path=str(cookies_path))
         await browser.close()
+
+    save_liked_ids(liked_ids_path, liked_ids)
+    print(f"[{account}] いいね済みID保存: {liked_ids_path} ({len(liked_ids)} 件)")
     return total
 
 
-async def update_github_secret(cookies_path: Path, secret_name: str) -> None:
+async def update_github_secret(file_path: Path, secret_name: str) -> None:
     token = os.environ.get("GH_TOKEN")
     repo  = os.environ.get("GITHUB_REPOSITORY")
     if not token or not repo:
@@ -178,7 +234,7 @@ async def update_github_secret(cookies_path: Path, secret_name: str) -> None:
             r.raise_for_status()
             kd = r.json()
             pub = nacl_public.PublicKey(kd["key"].encode(), encoding.Base64Encoder)
-            encrypted = base64.b64encode(nacl_public.SealedBox(pub).encrypt(cookies_path.read_text(encoding="utf-8").encode("utf-8"))).decode()
+            encrypted = base64.b64encode(nacl_public.SealedBox(pub).encrypt(file_path.read_text(encoding="utf-8").encode("utf-8"))).decode()
             await client.put(
                 f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}",
                 headers=headers,
@@ -195,14 +251,18 @@ async def main() -> None:
     config = load_config(config_path)
     account = config.get("account", "knzw")
 
-    cookies_path = Path(f"cookies_{account}.json")
+    cookies_path   = Path(f"cookies_{account}.json")
+    liked_ids_path = Path(f"liked_ids_{account}.json")
+
     if not cookies_path.exists():
         print(f"ERROR: {cookies_path} が見つかりません。", file=sys.stderr)
         sys.exit(1)
 
-    total = await run_account(cookies_path, config, account)
+    total = await run_account(cookies_path, liked_ids_path, config, account)
     print(f"[{account}] 完了: 合計 {total} 件いいね")
-    await update_github_secret(cookies_path, f"X_COOKIES_{account.upper()}")
+
+    await update_github_secret(cookies_path,   f"X_COOKIES_{account.upper()}")
+    await update_github_secret(liked_ids_path, f"X_LIKED_IDS_{account.upper()}")
 
 
 if __name__ == "__main__":
