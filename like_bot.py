@@ -28,11 +28,9 @@ def load_liked_ids(path: Path) -> set[str]:
     return set()
 
 
-def save_liked_ids(path: Path, liked_ids: set[str], max_ids: int = 2000) -> None:
-    # Snowflake IDは大きいほど新しいので、降順ソートでmax_ids件だけ残す
-    trimmed = sorted(liked_ids, reverse=True)[:max_ids]
+def save_liked_ids(path: Path, liked_ids: set[str]) -> None:
     with open(path, "w") as f:
-        json.dump(trimmed, f)
+        json.dump(list(liked_ids), f)
 
 
 async def get_tweet_id(btn) -> str | None:
@@ -215,7 +213,7 @@ async def run_account(
         await browser.close()
 
     save_liked_ids(liked_ids_path, liked_ids)
-    print(f"[{account}] いいね済みID保存: {liked_ids_path} ({len(liked_ids)} 件)")
+    print(f"[{account}] いいね済みID保存: {liked_ids_path} (累計 {len(liked_ids)} 件)")
     return total
 
 
